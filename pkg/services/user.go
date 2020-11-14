@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	db "netl/pkg/database"
 	model "netl/pkg/models/student"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"gopkg.in/mgo.v2/bson"
 )
 
 // UserService type embeds the database type to create sessions and database queries
@@ -30,23 +28,15 @@ func generateUniqId() int {
 	return uid
 }
 
-func (us *UserService) startDatabaseSession() {
-	// start a mongoDB session
-	us.dtb.GetMongoDB()
-}
-
 // AuthorizeUser is a user service method to which takes in a payload of user information
 func (us *UserService) AuthorizeUser(c context.Context, reg model.RegisterModel) error {
-	// inits
+	// generating a unique random user id
 	reg.UserId = generateUniqId()
-	// starting a database session for this service method
-	us.startDatabaseSession()
 	// database ops
-	dbErr := us.dtb.Dtb.C("users").Insert(reg)
+	dbErr := us.dtb.InsertUser(c, reg)
 	// checking if the performed database op had any errors
 	if dbErr != nil {
-		us.logger.Print("database problem occured")
-		fmt.Printf("authorization error in user service, %+v\n", dbErr)
+		us.logger.Debug().Err(dbErr).Msg("user service failed to authorize")
 		return dbErr
 	}
 	// return nil incase of no errors
@@ -55,23 +45,11 @@ func (us *UserService) AuthorizeUser(c context.Context, reg model.RegisterModel)
 
 // AuthenticateUser is a user service method that takes in a payload of login info and authenticates the user
 func (us *UserService) AuthenticateUser(c context.Context, login model.LoginPayload) error {
-	// inits
-	userInfoModel := model.RegisterModel{}
-	// starting a database session for this service method
-	us.startDatabaseSession()
-	// database query
-	authenticateQuery := bson.M{
-		"$and": []bson.M{
-			{"email": &login.Email},
-			{"password": &login.Password},
-		},
-	}
-	// database ops
-	dberror := us.dtb.Dtb.C("users").Find(authenticateQuery).One(&userInfoModel)
+	// database op
+	dberror := us.dtb.FindUser(c, login)
 	// checking if the performed database op had any errors
 	if dberror != nil {
-		us.logger.Err(dberror)
-		fmt.Printf("authentication error in user service, %+v\n", dberror)
+		us.logger.Debug().Err(dberror).Msg("user service failed to authenticate")
 		return dberror
 	}
 	// return nil incase of no errors
